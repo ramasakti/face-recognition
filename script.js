@@ -30,6 +30,8 @@ video.addEventListener('play', async () => {
 			descriptors: faceDescriptors[0], // Mengonversi deskriptor ke array
 		}
 
+		console.log('data', dataToSend);
+
 		// Mengirim data dengan method POST ke API
 		try {
 			const response = await fetch('http://localhost:8080/add-face', {
@@ -42,7 +44,7 @@ video.addEventListener('play', async () => {
 			})
 			const data = await response.json()
 
-			if (response.ok) console.log(data)
+			if (response.ok) console.log('selesai', data)
 		} catch (error) {
 			console.error(error)
 		}

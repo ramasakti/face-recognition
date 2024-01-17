@@ -11,69 +11,58 @@ Promise.all([
 function startVideo() {
     navigator.getUserMedia(
         { video: {} },
-        stream => video.srcObject = stream,
+        stream => {
+            video.srcObject = stream;
+
+            // Panggil fungsi getLabeledFaceDescriptions untuk mendapatkan deskriptor referensi
+            getLabeledFaceDescriptions().then((labeledFaceDescriptors) => {
+                // Jadikan acuan pencocokan wajah
+                faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors);
+
+                // Panggil fungsi untuk menangani perubahan dalam video feed
+                handleVideo();
+            });
+        },
         err => console.error(err)
-    )
+    );
 }
 
-const fetchFace = async () => {
-    const response = await fetch('http://localhost:8080/get-face')
-    const data = await response.json()
+async function handleVideo() {
+    const canvas = faceapi.createCanvasFromMedia(video);
+    document.body.append(canvas);
+    const displaySize = { width: video.width, height: video.height };
+    faceapi.matchDimensions(canvas, displaySize);
 
-    const faceData = data.payload.map(item => {
-        return {
-            label: item.username,
-            descriptors: item.descriptors
-        }
-    })
-
-    return faceData
-}
-
-video.addEventListener('play', async () => {
-    // Pengaturan video
-    const canvas = faceapi.createCanvasFromMedia(video)
-    document.body.append(canvas)
-    const displaySize = { width: video.width, height: video.height }
-    faceapi.matchDimensions(canvas, displaySize)
-
-    // Fetch data kemudian masukkan ke variabel labels dan descriptors
-    // const faceData = await fetchFace()
-    // let labels = []
-    // let descriptors = []
-    // faceData.map(item => {
-    //     labels.push(item.label)
-    //     descriptors.push(new Float32Array(item.descriptors))
-    // })
-
-    // Jadikan acuan pencocokan wajah
-    const faceMatcher = new faceapi.FaceMatcher(x)
-
-    // Show video
     setInterval(async () => {
         // Ambil wajah dari video
         const detections = await faceapi
             .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
             .withFaceLandmarks()
-            .withFaceDescriptors()
+            .withFaceDescriptors();
 
-        const resizedDetections = faceapi.resizeResults(detections, displaySize)
-        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
 
-        const result = resizedDetections.map(d => {
-            return faceMatcher.findBestMatch(d.descriptor)
-        })
+        if (faceMatcher) {
+            const result = resizedDetections.map(d => {
+                return faceMatcher.findBestMatch(d.descriptor);
+            });
 
-        result.forEach((result, i) => {
-            const box = resizedDetections[i].detection.box
-            const drawBox = new faceapi.draw.DrawBox(box, {
-                label: result,
-            })
-            drawBox.draw(canvas)
-        })
+            // console.log(result[0]['_label']);
 
-    }, 100)
-})
+            result.forEach((result, i) => {
+                const box = resizedDetections[i].detection.box;
+                const drawBox = new faceapi.draw.DrawBox(box, {
+                    label: result.toString(),
+                });
+                drawBox.draw(canvas);
+            });
+        }else{
+            console.log('gak maatch');
+        }
+
+    }, 100);
+}
 
 async function getFaceDescriptors() {
     const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors()
@@ -82,19 +71,34 @@ async function getFaceDescriptors() {
 }
 
 function getLabeledFaceDescriptions() {
-    const labels = ["rama", "aziz", "sulton"];
+    const labeledFaceDescriptors = [];
+
+    // Ganti label dan path file gambar sesuai dengan keinginan Anda
+    const labeledFaces = [
+        { label: "rama", path: "./labels/rama/", count: 2 },
+        { label: "aziz", path: "./labels/aziz/", count: 2 },
+        { label: "sulton", path: "./labels/sulton/", count: 2 },
+        // Tambahkan label dan path file gambar lainnya jika diperlukan
+    ];
+
     return Promise.all(
-        labels.map(async (label) => {
+        labeledFaces.map(async (labeledFace) => {
+            const { label, path, count } = labeledFace;
             const descriptions = [];
-            for (let i = 1; i <= 2; i++) {
-                const img = await faceapi.fetchImage(`./labels/${label}/${i}.png`);
+
+            for (let i = 1; i <= count; i++) {
+                const img = await faceapi.fetchImage(`${path}${i}.png`);
                 const detections = await faceapi
                     .detectSingleFace(img)
                     .withFaceLandmarks()
                     .withFaceDescriptor();
                 descriptions.push(detections.descriptor);
             }
-            return new faceapi.LabeledFaceDescriptors(label, descriptions);
+
+            const labeledFaceDescriptor = new faceapi.LabeledFaceDescriptors(label, descriptions);
+            labeledFaceDescriptors.push(labeledFaceDescriptor);
+
+            return labeledFaceDescriptor;
         })
-    );
+    ).then(() => labeledFaceDescriptors);
 }
